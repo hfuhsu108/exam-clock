@@ -363,7 +363,13 @@
                 const response = await fetch(CSV_FILE_PATH);
                 if (!response.ok) throw new Error("CSV Not Found");
                 
-                const text = await response.text();
+                // --- 修改重點：解決 CSV 亂碼問題 ---
+                // 使用 ArrayBuffer 讀取原始資料，並用 TextDecoder('big5') 強制轉碼
+                const buffer = await response.arrayBuffer();
+                const decoder = new TextDecoder('big5'); 
+                const text = decoder.decode(buffer);
+                // ------------------------------------
+
                 const lines = text.trim().split(/\r?\n/); // 處理不同換行符號
                 
                 const newData = [];
@@ -382,7 +388,7 @@
 
                 if (newData.length > 0) {
                     EXAM_DATA = newData;
-                    console.log("CSV 載入成功", EXAM_DATA);
+                    console.log("CSV 載入成功 (Big5解碼)", EXAM_DATA);
                 }
 
             } catch (error) {
