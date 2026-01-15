@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>段考電子時鐘看板</title>
+    <!-- 引入 Noto Sans TC 字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            /* 淺色系配色 */
+            --bg-color: #f0f4f8;
+            --sidebar-bg: #ffffff;
+            --text-primary: #2d3748;
+            --text-secondary: #718096;
+            --accent-blue: #4299e1;  /* 正常考試 */
+            --accent-orange: #ed8936; /* 剩餘10分鐘 */
+            --accent-red: #f56565;    /* 剩餘5分鐘 */
+            --accent-green: #48bb78;  /* 休息/備課 */
+            --border-color: #e2e8f0;
+            --highlight-bg: #ebf8ff;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* 左側主畫面區域 */
+        .main-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            padding: 2rem;
+        }
+
+        /* 電子鐘樣式 */
+        .digital-clock-container {
+            text-align: center;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .date-display {
+            font-size: 2rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            letter-spacing: 1px;
+        }
+
+        .time-display {
+            font-size: 8rem;
+            font-weight: 700;
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+            color: var(--text-primary);
+        }
+        
+        /* 校正面板樣式 */
+        .calibration-toggle {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            text-decoration: underline;
+            margin-top: 10px;
+            opacity: 0.6;
+            transition: opacity 0.3s;
+        }
+        .calibration-toggle:hover { opacity: 1; }
+
+        .calibration-panel {
+            margin-top: 10px;
+            display: none; /* 預設隱藏 */
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .calibration-panel.show { display: block; }
+
+        .cal-btn {
+            background: #fff;
+            border: 1px solid var(--border-color);
+            padding: 4px 8px;
+            margin: 0 2px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            transition: all 0.2s;
+        }
+        .cal-btn:hover { background: var(--highlight-bg); border-color: var(--accent-blue); }
+        .cal-info { font-size: 0.9rem; color: var(--accent-blue); margin-top: 5px; font-weight: bold; }
+
+
+        /* Canvas 容器 */
+        .canvas-wrapper {
+            position: relative;
+            width: 450px;
+            height: 450px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            transform: rotate(-90deg); /* 讓圓環起點在 12 點鐘方向 */
+        }
+
+        /* 圓環內部的資訊 */
+        .circle-info {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            width: 80%;
+        }
+
+        .subject-title {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            white-space: nowrap;
+        }
+
+        .status-message {
+            font-size: 1.5rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: color 0.3s;
+        }
+
+        /* 提醒訊息 (底部閃爍區) - 絕對定位固定版面 */
+        .alert-area {
+            position: absolute;
+            bottom: 30px;
+            left: 0;
+            width: 100%;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            pointer-events: none; 
+        }
+
+        .alert-text {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--accent-red);
+            animation: pulse 1.5s infinite;
+            display: none; 
+            background-color: rgba(240, 244, 248, 0.95); 
+            padding: 5px 30px;
+            border-radius: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        @keyframes pulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(0.98); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
+        /* 右側側邊欄 (考程表) */
+        .sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            border-left: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            box-shadow: -4px 0 15px rgba(0,0,0,0.03);
+            z-index: 10;
+        }
+
+        .sidebar-header {
+            padding: 2rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .sidebar-header h2 {
+            font-size: 1.5rem;
+            color: var(--text-primary);
+            border-left: 5px solid var(--accent-blue);
+            padding-left: 1rem;
+        }
+
+        .schedule-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+
+        /* 考程項目樣式 */
+        .schedule-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            justify-content: center;
+            padding: 1rem;
+            margin-bottom: 0.8rem;
+            border-radius: 12px;
+            transition: all 0.3s ease;
+            border: 1px solid transparent;
+        }
+
+        .item-time {
+            font-size: 1rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 0.2rem;
+        }
+
+        .item-subject {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* 狀態：已考完 */
+        .schedule-item.past {
+            opacity: 0.4;
+            background-color: #f7fafc;
+        }
+
+        /* 狀態：進行中 */
+        .schedule-item.active {
+            background-color: var(--highlight-bg);
+            border-color: var(--accent-blue);
+            transform: translateX(-5px);
+            box-shadow: 2px 4px 10px rgba(66, 153, 225, 0.1);
+        }
+        
+        .schedule-item.active .item-subject {
+            color: var(--accent-blue);
+        }
+
+        /* 響應式調整 */
+        @media (max-width: 1024px) {
+            .sidebar { width: 240px; }
+            .time-display { font-size: 6rem; }
+            .canvas-wrapper { width: 350px; height: 350px; }
+            .subject-title { font-size: 2.5rem; }
+        }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; height: auto; overflow-y: auto; }
+            .sidebar { width: 100%; height: auto; border-left: none; border-top: 1px solid var(--border-color); }
+            .main-section { height: 100vh; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 主畫面 -->
+    <main class="main-section">
+        <div class="digital-clock-container">
+            <div class="date-display" id="dateDisplay">--月--日 星期--</div>
+            <div class="time-display" id="timeDisplay">00:00:00</div>
+            
+            <!-- 校正面板按鈕 -->
+            <div class="calibration-toggle" onclick="toggleCalibration()">⚙️ 時間校正</div>
+            
+            <!-- 校正控制項 -->
+            <div class="calibration-panel" id="calibrationPanel">
+                <button class="cal-btn" onclick="adjustTime(-10000)">-10秒</button>
+                <button class="cal-btn" onclick="adjustTime(-1000)">-1秒</button>
+                <button class="cal-btn" onclick="resetCalibration()">歸零</button>
+                <button class="cal-btn" onclick="adjustTime(1000)">+1秒</button>
+                <button class="cal-btn" onclick="adjustTime(10000)">+10秒</button>
+                <div class="cal-info" id="calInfo">目前校正: 0 秒</div>
+            </div>
+        </div>
+
+        <div class="canvas-wrapper">
+            <canvas id="examCanvas" width="450" height="450"></canvas>
+            <div class="circle-info">
+                <div class="subject-title" id="centerSubject">載入中...</div>
+                <div class="status-message" id="centerStatus">請確認 CSV 檔案</div>
+            </div>
+        </div>
+
+        <div class="alert-area">
+            <div class="alert-text" id="alertText"></div>
+        </div>
+    </main>
+
+    <!-- 側邊欄：考程表 -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <h2>今日段考日程</h2>
+        </div>
+        <div class="schedule-list" id="scheduleList">
+            <!-- JS 動態生成 -->
+        </div>
+    </aside>
+
+    <script>
+        // --- 設定區 ---
+        const CSV_FILE_PATH = 'exam_schedule.csv';
+        
+        // 預設資料 (若 CSV 讀取失敗時使用)
+        let EXAM_DATA = [
+            { start: "08:15", end: "09:00", subject: "範例:國文" },
+            { start: "09:10", end: "09:55", subject: "範例:備課" },
+            { start: "10:05", end: "10:50", subject: "範例:自然" },
+            { start: "13:30", end: "14:15", subject: "範例:地理" },
+        ];
+
+        // --- 變數與初始化 ---
+        const canvas = document.getElementById('examCanvas');
+        const ctx = canvas.getContext('2d');
+        const centerX = canvas.width / 2;
+        const centerY = canvas.height / 2;
+        const radius = 200;
+        const lineWidth = 25;
+
+        // 時間校正 (毫秒)
+        let globalTimeOffset = 0; 
+
+        // 顏色定義
+        const COLORS = {
+            blue: '#4299e1',
+            orange: '#ed8936',
+            red: '#f56565',
+            green: '#48bb78',
+            gray: '#e2e8f0',
+            bg: '#f0f4f8'
+        };
+
+        // --- 主要邏輯 ---
+
+        async function init() {
+            // 讀取校正值
+            const savedOffset = localStorage.getItem('examClockOffset');
+            if (savedOffset) {
+                globalTimeOffset = parseInt(savedOffset);
+                updateCalInfo();
+            }
+
+            // 嘗試讀取 CSV
+            await loadCSV();
+
+            // 啟動迴圈
+            renderSidebar();
+            setInterval(updateLoop, 1000);
+            updateLoop(); 
+        }
+
+        async function loadCSV() {
+            try {
+                const response = await fetch(CSV_FILE_PATH);
+                if (!response.ok) throw new Error("CSV Not Found");
+                
+                const text = await response.text();
+                const lines = text.trim().split(/\r?\n/); // 處理不同換行符號
+                
+                const newData = [];
+                // 假設 CSV 沒有標題列，直接從第一行開始
+                // 格式：開始時間,結束時間,科目
+                for (let line of lines) {
+                    const parts = line.split(',');
+                    if (parts.length >= 3) {
+                        newData.push({
+                            start: parts[0].trim(),
+                            end: parts[1].trim(),
+                            subject: parts[2].trim()
+                        });
+                    }
+                }
+
+                if (newData.length > 0) {
+                    EXAM_DATA = newData;
+                    console.log("CSV 載入成功", EXAM_DATA);
+                }
+
+            } catch (error) {
+                console.warn("無法讀取 CSV 檔案，將使用預設/範例資料。", error);
+                // 保持使用預設 EXAM_DATA
+            }
+        }
+
+        // --- 校正功能 ---
+        function toggleCalibration() {
+            const panel = document.getElementById('calibrationPanel');
+            panel.classList.toggle('show');
+        }
+
+        function adjustTime(ms) {
+            globalTimeOffset += ms;
+            localStorage.setItem('examClockOffset', globalTimeOffset);
+            updateCalInfo();
+            updateLoop(); 
+        }
+
+        function resetCalibration() {
+            globalTimeOffset = 0;
+            localStorage.setItem('examClockOffset', 0);
+            updateCalInfo();
+            updateLoop();
+        }
+
+        function updateCalInfo() {
+            const sec = globalTimeOffset / 1000;
+            const sign = sec > 0 ? '+' : '';
+            document.getElementById('calInfo').textContent = `目前校正: ${sign}${sec} 秒`;
+        }
+
+        // --- 更新迴圈 ---
+        function updateLoop() {
+            let now = new Date();
+            now = new Date(now.getTime() + globalTimeOffset);
+            
+            renderClock(now);
+            renderStatus(now);
+        }
+
+        function renderClock(dateObj) {
+            const timeStr = dateObj.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            document.getElementById('timeDisplay').textContent = timeStr;
+            
+            const dateOptions = { month: 'long', day: 'numeric', weekday: 'long' };
+            document.getElementById('dateDisplay').textContent = dateObj.toLocaleDateString('zh-TW', dateOptions);
+        }
+
+        function renderStatus(now) {
+            const nowTime = now.getTime();
+            let activeSlot = null;
+            let nextSlot = null;
+
+            // 解析時間
+            const schedule = EXAM_DATA.map(item => {
+                const s = new Date(now);
+                const [sH, sM] = item.start.split(':');
+                s.setHours(parseInt(sH), parseInt(sM), 0, 0);
+
+                const e = new Date(now);
+                const [eH, eM] = item.end.split(':');
+                e.setHours(parseInt(eH), parseInt(eM), 0, 0);
+
+                return { ...item, startTime: s, endTime: e };
+            });
+
+            // 狀態判斷
+            for (let i = 0; i < schedule.length; i++) {
+                const slot = schedule[i];
+                if (nowTime >= slot.startTime.getTime() && nowTime <= slot.endTime.getTime()) {
+                    activeSlot = slot;
+                    break;
+                }
+                if (nowTime < slot.startTime.getTime()) {
+                    nextSlot = slot;
+                    break;
+                }
+            }
+
+            // 更新側邊欄
+            schedule.forEach((slot, index) => {
+                const el = document.getElementById(`slot-${index}`);
+                if (!el) return; // 防呆
+
+                el.classList.remove('past', 'active');
+                
+                if (nowTime > slot.endTime.getTime()) {
+                    el.classList.add('past');
+                } else if (nowTime >= slot.startTime.getTime() && nowTime <= slot.endTime.getTime()) {
+                    el.classList.add('active');
+                }
+            });
+
+            // Canvas & 訊息
+            const centerSubject = document.getElementById('centerSubject');
+            const centerStatus = document.getElementById('centerStatus');
+            const alertText = document.getElementById('alertText');
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawArc(1, COLORS.gray);
+
+            if (activeSlot) {
+                const totalDuration = activeSlot.endTime - activeSlot.startTime;
+                const elapsed = nowTime - activeSlot.startTime;
+                const remaining = activeSlot.endTime - nowTime;
+                const progress = elapsed / totalDuration;
+                const remainingMins = Math.ceil(remaining / 1000 / 60);
+
+                centerSubject.textContent = activeSlot.subject;
+                centerSubject.style.color = varToHex('--text-primary');
+
+                let mainColor = COLORS.blue;
+                let statusText = `剩餘 ${remainingMins} 分鐘`;
+                let alertMsg = "";
+                let alertShow = false;
+
+                if (activeSlot.subject.includes("備課")) {
+                    mainColor = COLORS.green;
+                    statusText = "準備下一節考試";
+                    centerSubject.style.color = COLORS.green;
+                } else {
+                    if (remainingMins <= 5) {
+                        mainColor = COLORS.red;
+                        alertMsg = `⚠️ ${activeSlot.subject} 考試即將結束！請檢查試卷`;
+                        alertShow = true;
+                    } else if (remainingMins <= 10) {
+                        mainColor = COLORS.orange;
+                        alertMsg = `🔔 注意時間：剩餘 ${remainingMins} 分鐘`;
+                        alertShow = true;
+                    }
+                }
+
+                centerStatus.textContent = statusText;
+                centerStatus.style.color = mainColor;
+                drawArc(progress, mainColor);
+
+                if (alertShow) {
+                    alertText.textContent = alertMsg;
+                    alertText.style.display = 'block';
+                } else {
+                    alertText.style.display = 'none';
+                }
+
+            } else if (nextSlot) {
+                centerSubject.textContent = "休息中";
+                centerStatus.textContent = `下節：${nextSlot.subject} (${nextSlot.start})`;
+                centerStatus.style.color = COLORS.textSecondary;
+                alertText.style.display = 'none';
+                drawArc(0, COLORS.blue);
+
+            } else {
+                const lastSlot = schedule[schedule.length - 1];
+                if (lastSlot && nowTime > lastSlot.endTime.getTime()) {
+                    centerSubject.textContent = "今日結束";
+                    centerStatus.textContent = "辛苦了！";
+                    centerStatus.style.color = COLORS.green;
+                    drawArc(1, COLORS.green);
+                } else {
+                    centerSubject.textContent = "準備中";
+                    centerStatus.textContent = "";
+                }
+                alertText.style.display = 'none';
+            }
+        }
+
+        function drawArc(percentage, color) {
+            if (percentage <= 0) return;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI * percentage);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+
+        function renderSidebar() {
+            const list = document.getElementById('scheduleList');
+            list.innerHTML = '';
+            EXAM_DATA.forEach((item, index) => {
+                const div = document.createElement('div');
+                div.className = 'schedule-item';
+                div.id = `slot-${index}`;
+                div.innerHTML = `
+                    <span class="item-time">${item.start} - ${item.end}</span>
+                    <span class="item-subject">${item.subject}</span>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        function varToHex(varName) {
+            return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+        }
+
+        window.onload = init;
+
+    </script>
+</body>
+</html>
