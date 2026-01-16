@@ -40,25 +40,51 @@
             align-items: center;
             justify-content: center;
             position: relative;
-            padding: 2rem;
+            padding: 2vmin; /* 使用 vmin 自適應內距 */
+        }
+
+        /* 全螢幕按鈕 */
+        .fullscreen-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid var(--border-color);
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            z-index: 50;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        }
+        .fullscreen-btn:hover {
+            background: #fff;
+            color: var(--text-primary);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
 
         /* 電子鐘樣式 */
         .digital-clock-container {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 3vh; /* 使用 vh 自適應間距 */
             position: relative;
+            width: 100%;
         }
 
         .date-display {
-            font-size: 2rem;
+            font-size: 4vmin; /* 自適應字體大小 */
             color: var(--text-secondary);
-            margin-bottom: 0.5rem;
+            margin-bottom: 1vh;
             letter-spacing: 1px;
         }
 
         .time-display {
-            font-size: 8rem;
+            font-size: 15vmin; /* 自適應字體大小 (視窗短邊的 15%) */
             font-weight: 700;
             line-height: 1;
             font-variant-numeric: tabular-nums;
@@ -84,6 +110,11 @@
             padding: 10px;
             border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+            white-space: nowrap;
         }
         
         .calibration-panel.show { display: block; }
@@ -103,11 +134,13 @@
         .cal-info { font-size: 0.9rem; color: var(--accent-blue); margin-top: 5px; font-weight: bold; }
 
 
-        /* Canvas 容器 */
+        /* Canvas 容器 - 自適應大小 */
         .canvas-wrapper {
             position: relative;
-            width: 450px;
-            height: 450px;
+            width: 45vmin;  /* 寬度隨視窗縮放 */
+            height: 45vmin; /* 高度隨視窗縮放 */
+            max-width: 500px; /* 設置最大限制以免在大螢幕過大 */
+            max-height: 500px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -115,6 +148,8 @@
 
         canvas {
             transform: rotate(-90deg); /* 讓圓環起點在 12 點鐘方向 */
+            width: 100%;  /* Canvas 寬度填滿容器 */
+            height: 100%; /* Canvas 高度填滿容器 */
         }
 
         /* 圓環內部的資訊 */
@@ -128,14 +163,14 @@
         }
 
         .subject-title {
-            font-size: 3.5rem;
+            font-size: 5vmin; /* 自適應標題 */
             font-weight: 700;
             margin-bottom: 0.5rem;
             white-space: nowrap;
         }
 
         .status-message {
-            font-size: 1.5rem;
+            font-size: 2.5vmin; /* 自適應狀態文字 */
             font-weight: 500;
             color: var(--text-secondary);
             transition: color 0.3s;
@@ -144,7 +179,7 @@
         /* 提醒訊息 (底部閃爍區) - 絕對定位固定版面 */
         .alert-area {
             position: absolute;
-            bottom: 30px;
+            bottom: 5vh;
             left: 0;
             width: 100%;
             height: 60px;
@@ -156,13 +191,13 @@
         }
 
         .alert-text {
-            font-size: 2rem;
+            font-size: 3vmin;
             font-weight: 700;
             color: var(--accent-red);
             animation: pulse 1.5s infinite;
             display: none; 
             background-color: rgba(240, 244, 248, 0.95); 
-            padding: 5px 30px;
+            padding: 10px 40px;
             border-radius: 50px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
@@ -249,15 +284,15 @@
         /* 響應式調整 */
         @media (max-width: 1024px) {
             .sidebar { width: 240px; }
-            .time-display { font-size: 6rem; }
-            .canvas-wrapper { width: 350px; height: 350px; }
-            .subject-title { font-size: 2.5rem; }
+            /* 字體大小已透過 vmin 自動調整，這裡只需微調容器 */
         }
 
         @media (max-width: 768px) {
             body { flex-direction: column; height: auto; overflow-y: auto; }
             .sidebar { width: 100%; height: auto; border-left: none; border-top: 1px solid var(--border-color); }
-            .main-section { height: 100vh; }
+            .main-section { height: 100vh; padding: 1rem; }
+            .canvas-wrapper { width: 70vmin; height: 70vmin; } /* 手機版讓圓環大一點 */
+            .fullscreen-btn { top: 10px; right: 10px; padding: 8px 12px; font-size: 0.8rem; }
         }
     </style>
 </head>
@@ -265,6 +300,11 @@
 
     <!-- 主畫面 -->
     <main class="main-section">
+        <!-- 全螢幕按鈕 -->
+        <button class="fullscreen-btn" onclick="toggleFullscreen()">
+            ⛶ 全螢幕
+        </button>
+
         <div class="digital-clock-container">
             <div class="date-display" id="dateDisplay">--月--日 星期--</div>
             <div class="time-display" id="timeDisplay">00:00:00</div>
@@ -283,8 +323,9 @@
             </div>
         </div>
 
+        <!-- 移除寫死的 width 和 height，改由 CSS 和 JS 控制 -->
         <div class="canvas-wrapper">
-            <canvas id="examCanvas" width="450" height="450"></canvas>
+            <canvas id="examCanvas"></canvas>
             <div class="circle-info">
                 <div class="subject-title" id="centerSubject">載入中...</div>
                 <div class="status-message" id="centerStatus">請確認 CSV 檔案</div>
@@ -321,10 +362,8 @@
         // --- 變數與初始化 ---
         const canvas = document.getElementById('examCanvas');
         const ctx = canvas.getContext('2d');
-        const centerX = canvas.width / 2;
-        const centerY = canvas.height / 2;
-        const radius = 200;
-        const lineWidth = 25;
+        // 中心點和半徑現在是動態的，不能在這裡寫死
+        let centerX, centerY, radius, lineWidth;
 
         // 時間校正 (毫秒)
         let globalTimeOffset = 0; 
@@ -349,6 +388,11 @@
                 updateCalInfo();
             }
 
+            // 初始化 Canvas 大小
+            resizeCanvas();
+            // 監聽視窗大小改變
+            window.addEventListener('resize', resizeCanvas);
+
             // 嘗試讀取 CSV
             await loadCSV();
 
@@ -358,17 +402,48 @@
             updateLoop(); 
         }
 
+        // --- 新增：處理 Canvas RWD 與全螢幕 ---
+        function resizeCanvas() {
+            const wrapper = document.querySelector('.canvas-wrapper');
+            // 將 Canvas 解析度設定為容器的顯示大小，確保清晰
+            canvas.width = wrapper.clientWidth;
+            canvas.height = wrapper.clientHeight;
+            
+            centerX = canvas.width / 2;
+            centerY = canvas.height / 2;
+            
+            // 半徑依據畫布大小動態計算 (取寬高較小者的一半，再扣除一些邊距)
+            radius = (Math.min(canvas.width, canvas.height) / 2) * 0.9;
+            lineWidth = radius * 0.12; // 線條寬度也隨比例調整
+            
+            // 如果正在運行，立即重繪以免閃爍
+            updateLoop();
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => {
+                    alert(`無法啟用全螢幕: ${err.message} (${err.name})`);
+                });
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+        // ----------------------------------------
+
         async function loadCSV() {
             try {
                 const response = await fetch(CSV_FILE_PATH);
                 if (!response.ok) throw new Error("CSV Not Found");
                 
-                const text = await response.text();
-                const lines = text.trim().split(/\r?\n/); // 處理不同換行符號
+                // 取消 Big5 強制解碼，改回預設的 UTF-8 (response.text())
+                const text = await response.text(); 
+
+                const lines = text.trim().split(/\r?\n/); 
                 
                 const newData = [];
-                // 假設 CSV 沒有標題列，直接從第一行開始
-                // 格式：開始時間,結束時間,科目
                 for (let line of lines) {
                     const parts = line.split(',');
                     if (parts.length >= 3) {
@@ -387,7 +462,6 @@
 
             } catch (error) {
                 console.warn("無法讀取 CSV 檔案，將使用預設/範例資料。", error);
-                // 保持使用預設 EXAM_DATA
             }
         }
 
@@ -485,69 +559,72 @@
             const alertText = document.getElementById('alertText');
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            drawArc(1, COLORS.gray);
+            // 因為 resizeCanvas 可能在 updateLoop 前執行，確保變數存在
+            if (centerX && centerY && radius) {
+                drawArc(1, COLORS.gray);
 
-            if (activeSlot) {
-                const totalDuration = activeSlot.endTime - activeSlot.startTime;
-                const elapsed = nowTime - activeSlot.startTime;
-                const remaining = activeSlot.endTime - nowTime;
-                const progress = elapsed / totalDuration;
-                const remainingMins = Math.ceil(remaining / 1000 / 60);
+                if (activeSlot) {
+                    const totalDuration = activeSlot.endTime - activeSlot.startTime;
+                    const elapsed = nowTime - activeSlot.startTime;
+                    const remaining = activeSlot.endTime - nowTime;
+                    const progress = elapsed / totalDuration;
+                    const remainingMins = Math.ceil(remaining / 1000 / 60);
 
-                centerSubject.textContent = activeSlot.subject;
-                centerSubject.style.color = varToHex('--text-primary');
+                    centerSubject.textContent = activeSlot.subject;
+                    centerSubject.style.color = varToHex('--text-primary');
 
-                let mainColor = COLORS.blue;
-                let statusText = `剩餘 ${remainingMins} 分鐘`;
-                let alertMsg = "";
-                let alertShow = false;
+                    let mainColor = COLORS.blue;
+                    let statusText = `剩餘 ${remainingMins} 分鐘`;
+                    let alertMsg = "";
+                    let alertShow = false;
 
-                if (activeSlot.subject.includes("備課")) {
-                    mainColor = COLORS.green;
-                    statusText = "準備下一節考試";
-                    centerSubject.style.color = COLORS.green;
-                } else {
-                    if (remainingMins <= 5) {
-                        mainColor = COLORS.red;
-                        alertMsg = `⚠️ ${activeSlot.subject} 考試即將結束！請檢查試卷`;
-                        alertShow = true;
-                    } else if (remainingMins <= 10) {
-                        mainColor = COLORS.orange;
-                        alertMsg = `🔔 注意時間：剩餘 ${remainingMins} 分鐘`;
-                        alertShow = true;
+                    if (activeSlot.subject.includes("備課")) {
+                        mainColor = COLORS.green;
+                        statusText = "準備下一節考試";
+                        centerSubject.style.color = COLORS.green;
+                    } else {
+                        if (remainingMins <= 5) {
+                            mainColor = COLORS.red;
+                            alertMsg = `⚠️ ${activeSlot.subject} 考試即將結束！請檢查試卷`;
+                            alertShow = true;
+                        } else if (remainingMins <= 10) {
+                            mainColor = COLORS.orange;
+                            alertMsg = `🔔 注意時間：剩餘 ${remainingMins} 分鐘`;
+                            alertShow = true;
+                        }
                     }
-                }
 
-                centerStatus.textContent = statusText;
-                centerStatus.style.color = mainColor;
-                drawArc(progress, mainColor);
+                    centerStatus.textContent = statusText;
+                    centerStatus.style.color = mainColor;
+                    drawArc(progress, mainColor);
 
-                if (alertShow) {
-                    alertText.textContent = alertMsg;
-                    alertText.style.display = 'block';
+                    if (alertShow) {
+                        alertText.textContent = alertMsg;
+                        alertText.style.display = 'block';
+                    } else {
+                        alertText.style.display = 'none';
+                    }
+
+                } else if (nextSlot) {
+                    centerSubject.textContent = "休息中";
+                    centerStatus.textContent = `下節：${nextSlot.subject} (${nextSlot.start})`;
+                    centerStatus.style.color = COLORS.textSecondary;
+                    alertText.style.display = 'none';
+                    drawArc(0, COLORS.blue);
+
                 } else {
+                    const lastSlot = schedule[schedule.length - 1];
+                    if (lastSlot && nowTime > lastSlot.endTime.getTime()) {
+                        centerSubject.textContent = "今日結束";
+                        centerStatus.textContent = "辛苦了！";
+                        centerStatus.style.color = COLORS.green;
+                        drawArc(1, COLORS.green);
+                    } else {
+                        centerSubject.textContent = "準備中";
+                        centerStatus.textContent = "";
+                    }
                     alertText.style.display = 'none';
                 }
-
-            } else if (nextSlot) {
-                centerSubject.textContent = "休息中";
-                centerStatus.textContent = `下節：${nextSlot.subject} (${nextSlot.start})`;
-                centerStatus.style.color = COLORS.textSecondary;
-                alertText.style.display = 'none';
-                drawArc(0, COLORS.blue);
-
-            } else {
-                const lastSlot = schedule[schedule.length - 1];
-                if (lastSlot && nowTime > lastSlot.endTime.getTime()) {
-                    centerSubject.textContent = "今日結束";
-                    centerStatus.textContent = "辛苦了！";
-                    centerStatus.style.color = COLORS.green;
-                    drawArc(1, COLORS.green);
-                } else {
-                    centerSubject.textContent = "準備中";
-                    centerStatus.textContent = "";
-                }
-                alertText.style.display = 'none';
             }
         }
 
