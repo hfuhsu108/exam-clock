@@ -367,6 +367,8 @@
 
         // 時間校正 (毫秒)
         let globalTimeOffset = 0; 
+        // 螢幕喚醒鎖
+        let wakeLock = null;
 
         // 顏色定義
         const COLORS = {
@@ -395,6 +397,9 @@
 
             // 嘗試讀取 CSV
             await loadCSV();
+            
+            // 申請螢幕喚醒鎖 (防止自動休眠)
+            await requestWakeLock();
 
             // 啟動迴圈
             renderSidebar();
@@ -402,7 +407,30 @@
             updateLoop(); 
         }
 
-        // --- 新增：處理 Canvas RWD 與全螢幕 ---
+        // --- Wake Lock 功能: 防止螢幕休眠 ---
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    console.log('Screen Wake Lock active');
+                    
+                    wakeLock.addEventListener('release', () => {
+                        console.log('Screen Wake Lock released');
+                    });
+                }
+            } catch (err) {
+                console.error(`${err.name}, ${err.message}`);
+            }
+        }
+        
+        // 當頁面重新顯示時(例如切換分頁後回來)，重新申請鎖定
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+
+        // --- Canvas RWD 與全螢幕 ---
         function resizeCanvas() {
             const wrapper = document.querySelector('.canvas-wrapper');
             // 將 Canvas 解析度設定為容器的顯示大小，確保清晰
