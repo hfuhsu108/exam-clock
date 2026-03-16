@@ -4,19 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>段考電子時鐘看板</title>
-    <!-- 引入 Noto Sans TC 字體 -->
+    <!-- 引入 Noto Sans TC 字體 (建議部署時下載字體到本地，避免斷網時版面跑掉) -->
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            /* 淺色系配色 */
             --bg-color: #f0f4f8;
             --sidebar-bg: #ffffff;
             --text-primary: #2d3748;
             --text-secondary: #718096;
-            --accent-blue: #4299e1;  /* 正常考試 */
-            --accent-orange: #ed8936; /* 剩餘10分鐘 */
-            --accent-red: #f56565;    /* 剩餘5分鐘 */
-            --accent-green: #48bb78;  /* 休息/備課 */
+            --accent-blue: #4299e1;
+            --accent-orange: #ed8936;
+            --accent-red: #f56565;
+            --accent-green: #48bb78;
             --border-color: #e2e8f0;
             --highlight-bg: #ebf8ff;
         }
@@ -24,7 +23,8 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: 'Noto Sans TC', sans-serif;
+            /* [改進] 完整的中文字體 fallback，斷網時也能正常顯示 */
+            font-family: 'Noto Sans TC', 'Microsoft JhengHei', '微軟正黑體', 'PingFang TC', 'Heiti TC', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-primary);
             height: 100vh;
@@ -32,7 +32,6 @@
             overflow: hidden;
         }
 
-        /* 左側主畫面區域 */
         .main-section {
             flex: 1;
             display: flex;
@@ -40,10 +39,9 @@
             align-items: center;
             justify-content: center;
             position: relative;
-            padding: 2vmin; /* 使用 vmin 自適應內距 */
+            padding: 2vmin;
         }
 
-        /* 全螢幕按鈕 */
         .fullscreen-btn {
             position: absolute;
             top: 20px;
@@ -68,30 +66,47 @@
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
 
-        /* 電子鐘樣式 */
+        /* [新增] CSV 載入失敗警示 */
+        .csv-warning {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: #fffbeb;
+            border: 1px solid #f6ad55;
+            color: #c05621;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            z-index: 50;
+            display: none;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+            max-width: 360px;
+            line-height: 1.4;
+        }
+
         .digital-clock-container {
             text-align: center;
-            margin-bottom: 3vh; /* 使用 vh 自適應間距 */
+            margin-bottom: 3vh;
             position: relative;
             width: 100%;
         }
 
         .date-display {
-            font-size: 4vmin; /* 自適應字體大小 */
+            font-size: 4vmin;
             color: var(--text-secondary);
             margin-bottom: 1vh;
             letter-spacing: 1px;
         }
 
         .time-display {
-            font-size: 15vmin; /* 自適應字體大小 (視窗短邊的 15%) */
+            font-size: 15vmin;
             font-weight: 700;
             line-height: 1;
             font-variant-numeric: tabular-nums;
             color: var(--text-primary);
         }
         
-        /* 校正面板樣式 */
         .calibration-toggle {
             font-size: 0.9rem;
             color: var(--text-secondary);
@@ -105,7 +120,7 @@
 
         .calibration-panel {
             margin-top: 10px;
-            display: none; /* 預設隱藏 */
+            display: none;
             background: rgba(255,255,255,0.8);
             padding: 10px;
             border-radius: 8px;
@@ -133,13 +148,11 @@
         .cal-btn:hover { background: var(--highlight-bg); border-color: var(--accent-blue); }
         .cal-info { font-size: 0.9rem; color: var(--accent-blue); margin-top: 5px; font-weight: bold; }
 
-
-        /* Canvas 容器 - 自適應大小 */
         .canvas-wrapper {
             position: relative;
-            width: 45vmin;  /* 寬度隨視窗縮放 */
-            height: 45vmin; /* 高度隨視窗縮放 */
-            max-width: 500px; /* 設置最大限制以免在大螢幕過大 */
+            width: 45vmin;
+            height: 45vmin;
+            max-width: 500px;
             max-height: 500px;
             display: flex;
             justify-content: center;
@@ -147,12 +160,11 @@
         }
 
         canvas {
-            transform: rotate(-90deg); /* 讓圓環起點在 12 點鐘方向 */
-            width: 100%;  /* Canvas 寬度填滿容器 */
-            height: 100%; /* Canvas 高度填滿容器 */
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
         }
 
-        /* 圓環內部的資訊 */
         .circle-info {
             position: absolute;
             top: 50%;
@@ -163,20 +175,19 @@
         }
 
         .subject-title {
-            font-size: 5vmin; /* 自適應標題 */
+            font-size: 5vmin;
             font-weight: 700;
             margin-bottom: 0.5rem;
             white-space: nowrap;
         }
 
         .status-message {
-            font-size: 2.5vmin; /* 自適應狀態文字 */
+            font-size: 2.5vmin;
             font-weight: 500;
             color: var(--text-secondary);
             transition: color 0.3s;
         }
 
-        /* 提醒訊息 (底部閃爍區) - 絕對定位固定版面 */
         .alert-area {
             position: absolute;
             bottom: 5vh;
@@ -208,7 +219,6 @@
             100% { opacity: 1; transform: scale(1); }
         }
 
-        /* 右側側邊欄 (考程表) */
         .sidebar {
             width: 280px;
             background-color: var(--sidebar-bg);
@@ -237,7 +247,6 @@
             padding: 1rem;
         }
 
-        /* 考程項目樣式 */
         .schedule-item {
             display: flex;
             flex-direction: column;
@@ -263,13 +272,11 @@
             color: var(--text-primary);
         }
 
-        /* 狀態：已考完 */
         .schedule-item.past {
             opacity: 0.4;
             background-color: #f7fafc;
         }
 
-        /* 狀態：進行中 */
         .schedule-item.active {
             background-color: var(--highlight-bg);
             border-color: var(--accent-blue);
@@ -281,38 +288,52 @@
             color: var(--accent-blue);
         }
 
-        /* 響應式調整 */
+        /* [新增] NoSleep 隱藏影片 */
+        #nosleep-video {
+            position: fixed;
+            top: -1px;
+            left: -1px;
+            width: 1px;
+            height: 1px;
+            opacity: 0.01;
+            pointer-events: none;
+            z-index: -9999;
+        }
+
         @media (max-width: 1024px) {
             .sidebar { width: 240px; }
-            /* 字體大小已透過 vmin 自動調整，這裡只需微調容器 */
         }
 
         @media (max-width: 768px) {
             body { flex-direction: column; height: auto; overflow-y: auto; }
             .sidebar { width: 100%; height: auto; border-left: none; border-top: 1px solid var(--border-color); }
             .main-section { height: 100vh; padding: 1rem; }
-            .canvas-wrapper { width: 70vmin; height: 70vmin; } /* 手機版讓圓環大一點 */
+            .canvas-wrapper { width: 70vmin; height: 70vmin; }
             .fullscreen-btn { top: 10px; right: 10px; padding: 8px 12px; font-size: 0.8rem; }
         }
     </style>
 </head>
 <body>
 
-    <!-- 主畫面 -->
+    <!-- [新增] NoSleep: 無聲影片，防止系統級休眠 -->
+    <video id="nosleep-video" playsinline loop muted></video>
+
     <main class="main-section">
-        <!-- 全螢幕按鈕 -->
         <button class="fullscreen-btn" onclick="toggleFullscreen()">
             ⛶ 全螢幕
         </button>
+
+        <!-- [新增] CSV 載入失敗時顯示的警示 -->
+        <div class="csv-warning" id="csvWarning">
+            ⚠️ 無法載入考程 CSV 檔案，目前顯示的是範例資料。請確認 exam_schedule.csv 與本頁面放在同一目錄，並透過 HTTP 伺服器開啟。
+        </div>
 
         <div class="digital-clock-container">
             <div class="date-display" id="dateDisplay">--月--日 星期--</div>
             <div class="time-display" id="timeDisplay">00:00:00</div>
             
-            <!-- 校正面板按鈕 -->
             <div class="calibration-toggle" onclick="toggleCalibration()">⚙️ 時間校正</div>
             
-            <!-- 校正控制項 -->
             <div class="calibration-panel" id="calibrationPanel">
                 <button class="cal-btn" onclick="adjustTime(-10000)">-10秒</button>
                 <button class="cal-btn" onclick="adjustTime(-1000)">-1秒</button>
@@ -323,7 +344,6 @@
             </div>
         </div>
 
-        <!-- 移除寫死的 width 和 height，改由 CSS 和 JS 控制 -->
         <div class="canvas-wrapper">
             <canvas id="examCanvas"></canvas>
             <div class="circle-info">
@@ -337,21 +357,17 @@
         </div>
     </main>
 
-    <!-- 側邊欄：考程表 -->
     <aside class="sidebar">
         <div class="sidebar-header">
             <h2>今日段考日程</h2>
         </div>
-        <div class="schedule-list" id="scheduleList">
-            <!-- JS 動態生成 -->
-        </div>
+        <div class="schedule-list" id="scheduleList"></div>
     </aside>
 
     <script>
         // --- 設定區 ---
         const CSV_FILE_PATH = 'exam_schedule.csv';
         
-        // 預設資料 (若 CSV 讀取失敗時使用)
         let EXAM_DATA = [
             { start: "08:15", end: "09:00", subject: "範例:國文" },
             { start: "09:10", end: "09:55", subject: "範例:備課" },
@@ -359,55 +375,95 @@
             { start: "13:30", end: "14:15", subject: "範例:地理" },
         ];
 
-        // --- 變數與初始化 ---
+        // --- 變數 ---
         const canvas = document.getElementById('examCanvas');
         const ctx = canvas.getContext('2d');
-        // 中心點和半徑現在是動態的，不能在這裡寫死
         let centerX, centerY, radius, lineWidth;
-
-        // 時間校正 (毫秒)
         let globalTimeOffset = 0; 
-        // 螢幕喚醒鎖
         let wakeLock = null;
+        let csvLoaded = false; // [新增] 追蹤 CSV 載入狀態
 
-        // 顏色定義
         const COLORS = {
             blue: '#4299e1',
             orange: '#ed8936',
             red: '#f56565',
             green: '#48bb78',
             gray: '#e2e8f0',
-            bg: '#f0f4f8'
+            bg: '#f0f4f8',
+            textSecondary: '#718096'  // [修正] 補上原本缺少的定義
         };
 
-        // --- 主要邏輯 ---
+        // =============================================
+        // [新增] NoSleep 防休眠模組
+        // 原理：循環播放一段無聲的微型影片，
+        // 讓系統認為有媒體正在播放，阻止 OS 層級的休眠。
+        // 比 Wake Lock API 更可靠，能對付大屏的硬體待機。
+        // =============================================
+        const NOSLEEP_VIDEO = document.getElementById('nosleep-video');
 
+        function createNoSleepSource() {
+            // 極小的無聲 webm (Chrome/Edge/Firefox)
+            const webm = "data:video/webm;base64,GkXfo0AgQoaBAUL3gQFC8oEEQvOBCEKCQAR3ZWJtQoeBAkKFgQIYU4BnQI0VSalmQCgq17FAAw9CQE2AQAZ3aGFtbXlXQUAGd2hhbW15RIlACECPQAAAAAAAFlSua0AxrkAu14EBY8WBAZyBACK1nEADdW5khkAFVl9WUDglhohAA1ZQOIOBAeBABrCBCLqBCB9DtnVB";
+            // 極小的無聲 mp4 (Safari/iOS)
+            const mp4 = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACKBtZGF0AAACYQYF//9d3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE1NyByMjkwMSA3ZDBmZjIyIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxOSAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTEgZGVibG9jaz0wOjA6MCBhbmFseXNlPTB4MToweDEgbWU9ZXNhIHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTI1IHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9MTAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yOC4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCB2YnZfbWF4cmF0ZT03NjggdmJ2X2J1ZnNpemU9MzAwMCBjcmZfbWF4PTAuMCBuYWxfaHJkPW5vbmUgZmlsbGVyPTAgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAAA9liIQAV/0TAAYdeBTXzg8AAALhbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAACoAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAkx0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAgAAAAIAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAHEbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAB1MAAACAAVxAAAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAcm1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAADJzdGJsAAAAJnN0c2QAAAAAAAAAAQAAABZhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAgACABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMGF2Y0MBQsAK/+EAF2dCwAq5ZYQAAAM0AAADIDNAAAYMAAK4IAATwIAAAAoHmIFNAAAAAABhc3R0cwAAAAAAAAABAAAAAQAACAAAAAAcc3R0cwAAAAAAAAABAAAAAQAAAAAAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAEAAAABAAAAHHN0c3oAAAAAAAAAAAAAAAEAAAAGAAAAFHN0Y28AAAAAAAAAAQAAACw=";
+            
+            if (NOSLEEP_VIDEO.canPlayType('video/webm; codecs="vp8"')) {
+                NOSLEEP_VIDEO.src = webm;
+            } else {
+                NOSLEEP_VIDEO.src = mp4;
+            }
+        }
+
+        function enableNoSleep() {
+            createNoSleepSource();
+            const playPromise = NOSLEEP_VIDEO.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(() => {
+                    console.warn('NoSleep: 自動播放被阻擋，等待使用者互動後重試');
+                });
+            }
+        }
+
+        function tryEnableNoSleep() {
+            if (NOSLEEP_VIDEO.paused) {
+                NOSLEEP_VIDEO.play().catch(() => {});
+            }
+        }
+
+        // =============================================
+        // 主要邏輯
+        // =============================================
         async function init() {
-            // 讀取校正值
             const savedOffset = localStorage.getItem('examClockOffset');
             if (savedOffset) {
                 globalTimeOffset = parseInt(savedOffset);
                 updateCalInfo();
             }
 
-            // 初始化 Canvas 大小
             resizeCanvas();
-            // 監聽視窗大小改變
             window.addEventListener('resize', resizeCanvas);
 
-            // 嘗試讀取 CSV
             await loadCSV();
             
-            // 申請螢幕喚醒鎖 (防止自動休眠)
-            await requestWakeLock();
+            // [新增] CSV 載入失敗時顯示可見的警告
+            if (!csvLoaded) {
+                document.getElementById('csvWarning').style.display = 'block';
+            }
 
-            // 啟動迴圈
+            // [改進] 防休眠雙保險：Wake Lock API + NoSleep 無聲影片
+            await requestWakeLock();
+            enableNoSleep();
+
+            // 監聽使用者互動，確保 NoSleep 能通過自動播放限制
+            document.addEventListener('click', tryEnableNoSleep);
+            document.addEventListener('touchstart', tryEnableNoSleep);
+
             renderSidebar();
             setInterval(updateLoop, 1000);
             updateLoop(); 
         }
 
-        // --- Wake Lock 功能: 防止螢幕休眠 ---
+        // --- Wake Lock ---
         async function requestWakeLock() {
             try {
                 if ('wakeLock' in navigator) {
@@ -416,35 +472,33 @@
                     
                     wakeLock.addEventListener('release', () => {
                         console.log('Screen Wake Lock released');
+                        wakeLock = null; // [修正] 釋放後歸零
                     });
                 }
             } catch (err) {
-                console.error(`${err.name}, ${err.message}`);
+                console.warn(`Wake Lock 無法啟用: ${err.name}, ${err.message}`);
             }
         }
         
-        // 當頁面重新顯示時(例如切換分頁後回來)，重新申請鎖定
+        // [修正] 不再檢查 wakeLock !== null，頁面可見時無條件嘗試重新取鎖
         document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
+            if (document.visibilityState === 'visible') {
                 await requestWakeLock();
+                tryEnableNoSleep();
             }
         });
 
-        // --- Canvas RWD 與全螢幕 ---
+        // --- Canvas RWD ---
         function resizeCanvas() {
             const wrapper = document.querySelector('.canvas-wrapper');
-            // 將 Canvas 解析度設定為容器的顯示大小，確保清晰
             canvas.width = wrapper.clientWidth;
             canvas.height = wrapper.clientHeight;
             
             centerX = canvas.width / 2;
             centerY = canvas.height / 2;
-            
-            // 半徑依據畫布大小動態計算 (取寬高較小者的一半，再扣除一些邊距)
             radius = (Math.min(canvas.width, canvas.height) / 2) * 0.9;
-            lineWidth = radius * 0.12; // 線條寬度也隨比例調整
+            lineWidth = radius * 0.12;
             
-            // 如果正在運行，立即重繪以免閃爍
             updateLoop();
         }
 
@@ -458,17 +512,16 @@
                     document.exitFullscreen();
                 }
             }
+            tryEnableNoSleep(); // 趁使用者互動啟動 NoSleep
         }
-        // ----------------------------------------
 
+        // --- CSV ---
         async function loadCSV() {
             try {
                 const response = await fetch(CSV_FILE_PATH);
-                if (!response.ok) throw new Error("CSV Not Found");
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 
-                // 取消 Big5 強制解碼，改回預設的 UTF-8 (response.text())
                 const text = await response.text(); 
-
                 const lines = text.trim().split(/\r?\n/); 
                 
                 const newData = [];
@@ -485,18 +538,19 @@
 
                 if (newData.length > 0) {
                     EXAM_DATA = newData;
+                    csvLoaded = true;
                     console.log("CSV 載入成功", EXAM_DATA);
                 }
 
             } catch (error) {
                 console.warn("無法讀取 CSV 檔案，將使用預設/範例資料。", error);
+                csvLoaded = false;
             }
         }
 
-        // --- 校正功能 ---
+        // --- 校正 ---
         function toggleCalibration() {
-            const panel = document.getElementById('calibrationPanel');
-            panel.classList.toggle('show');
+            document.getElementById('calibrationPanel').classList.toggle('show');
         }
 
         function adjustTime(ms) {
@@ -519,11 +573,10 @@
             document.getElementById('calInfo').textContent = `目前校正: ${sign}${sec} 秒`;
         }
 
-        // --- 更新迴圈 ---
+        // --- 主迴圈 ---
         function updateLoop() {
             let now = new Date();
             now = new Date(now.getTime() + globalTimeOffset);
-            
             renderClock(now);
             renderStatus(now);
         }
@@ -541,7 +594,6 @@
             let activeSlot = null;
             let nextSlot = null;
 
-            // 解析時間
             const schedule = EXAM_DATA.map(item => {
                 const s = new Date(now);
                 const [sH, sM] = item.start.split(':');
@@ -554,7 +606,6 @@
                 return { ...item, startTime: s, endTime: e };
             });
 
-            // 狀態判斷
             for (let i = 0; i < schedule.length; i++) {
                 const slot = schedule[i];
                 if (nowTime >= slot.startTime.getTime() && nowTime <= slot.endTime.getTime()) {
@@ -570,10 +621,8 @@
             // 更新側邊欄
             schedule.forEach((slot, index) => {
                 const el = document.getElementById(`slot-${index}`);
-                if (!el) return; // 防呆
-
+                if (!el) return;
                 el.classList.remove('past', 'active');
-                
                 if (nowTime > slot.endTime.getTime()) {
                     el.classList.add('past');
                 } else if (nowTime >= slot.startTime.getTime() && nowTime <= slot.endTime.getTime()) {
@@ -581,13 +630,12 @@
                 }
             });
 
-            // Canvas & 訊息
             const centerSubject = document.getElementById('centerSubject');
             const centerStatus = document.getElementById('centerStatus');
             const alertText = document.getElementById('alertText');
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            // 因為 resizeCanvas 可能在 updateLoop 前執行，確保變數存在
+
             if (centerX && centerY && radius) {
                 drawArc(1, COLORS.gray);
 
@@ -636,7 +684,7 @@
                 } else if (nextSlot) {
                     centerSubject.textContent = "休息中";
                     centerStatus.textContent = `下節：${nextSlot.subject} (${nextSlot.start})`;
-                    centerStatus.style.color = COLORS.textSecondary;
+                    centerStatus.style.color = COLORS.textSecondary; // [修正] 現在有正確的值
                     alertText.style.display = 'none';
                     drawArc(0, COLORS.blue);
 
@@ -686,7 +734,6 @@
         }
 
         window.onload = init;
-
     </script>
 </body>
 </html>
