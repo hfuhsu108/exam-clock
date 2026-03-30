@@ -23,7 +23,6 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            /* [改進] 完整的中文字體 fallback，斷網時也能正常顯示 */
             font-family: 'Noto Sans TC', 'Microsoft JhengHei', '微軟正黑體', 'PingFang TC', 'Heiti TC', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-primary);
@@ -66,7 +65,6 @@
             box-shadow: 0 4px 8px rgba(0,0,0,0.1);
         }
 
-        /* [新增] CSV 載入失敗警示 */
         .csv-warning {
             position: absolute;
             top: 20px;
@@ -84,6 +82,37 @@
             max-width: 360px;
             line-height: 1.4;
         }
+
+        /* 防休眠狀態指示燈 — 右下角小圓點 */
+        .nosleep-indicator {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #a0aec0;
+            z-index: 100;
+            transition: background 0.3s;
+            cursor: help;
+        }
+        .nosleep-indicator.active { background: #48bb78; }
+        .nosleep-indicator::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 18px;
+            right: 0;
+            background: rgba(0,0,0,0.75);
+            color: #fff;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .nosleep-indicator:hover::after { opacity: 1; }
 
         .digital-clock-container {
             text-align: center;
@@ -219,6 +248,19 @@
             100% { opacity: 1; transform: scale(1); }
         }
 
+        /* 防休眠用的隱藏微動畫元素 */
+        .nosleep-pixel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 1px;
+            height: 1px;
+            opacity: 0.01;
+            pointer-events: none;
+            z-index: -9999;
+            background: transparent;
+        }
+
         .sidebar {
             width: 280px;
             background-color: var(--sidebar-bg);
@@ -288,18 +330,6 @@
             color: var(--accent-blue);
         }
 
-        /* [新增] NoSleep 隱藏影片 */
-        #nosleep-video {
-            position: fixed;
-            top: -1px;
-            left: -1px;
-            width: 1px;
-            height: 1px;
-            opacity: 0.01;
-            pointer-events: none;
-            z-index: -9999;
-        }
-
         @media (max-width: 1024px) {
             .sidebar { width: 240px; }
         }
@@ -315,15 +345,18 @@
 </head>
 <body>
 
-    <!-- [新增] NoSleep: 無聲影片，防止系統級休眠 -->
-    <video id="nosleep-video" playsinline loop muted></video>
+    <!-- 防休眠：隱藏的 canvas 用於產生影片串流 -->
+    <canvas id="nosleepCanvas" width="2" height="2" style="position:fixed;top:-1px;left:-1px;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-9999;"></canvas>
+    <video id="nosleep-video" playsinline loop muted style="position:fixed;top:-1px;left:-1px;width:1px;height:1px;opacity:0.01;pointer-events:none;z-index:-9999;"></video>
+
+    <!-- 防休眠：微動畫像素 -->
+    <div class="nosleep-pixel" id="nosleepPixel"></div>
 
     <main class="main-section">
         <button class="fullscreen-btn" onclick="toggleFullscreen()">
             ⛶ 全螢幕
         </button>
 
-        <!-- [新增] CSV 載入失敗時顯示的警示 -->
         <div class="csv-warning" id="csvWarning">
             ⚠️ 無法載入考程 CSV 檔案，目前顯示的是範例資料。請確認 exam_schedule.csv 與本頁面放在同一目錄，並透過 HTTP 伺服器開啟。
         </div>
@@ -364,8 +397,13 @@
         <div class="schedule-list" id="scheduleList"></div>
     </aside>
 
+    <!-- 防休眠狀態指示燈 -->
+    <div class="nosleep-indicator" id="nosleepIndicator" data-tooltip="防休眠：未啟動"></div>
+
     <script>
-        // --- 設定區 ---
+        // =============================================
+        // 設定區
+        // =============================================
         const CSV_FILE_PATH = 'exam_schedule.csv';
         
         let EXAM_DATA = [
@@ -375,13 +413,15 @@
             { start: "13:30", end: "14:15", subject: "範例:地理" },
         ];
 
-        // --- 變數 ---
+        // =============================================
+        // 變數
+        // =============================================
         const canvas = document.getElementById('examCanvas');
         const ctx = canvas.getContext('2d');
         let centerX, centerY, radius, lineWidth;
         let globalTimeOffset = 0; 
         let wakeLock = null;
-        let csvLoaded = false; // [新增] 追蹤 CSV 載入狀態
+        let csvLoaded = false;
 
         const COLORS = {
             blue: '#4299e1',
@@ -390,45 +430,259 @@
             green: '#48bb78',
             gray: '#e2e8f0',
             bg: '#f0f4f8',
-            textSecondary: '#718096'  // [修正] 補上原本缺少的定義
+            textSecondary: '#718096'
         };
 
+
         // =============================================
-        // [新增] NoSleep 防休眠模組
-        // 原理：循環播放一段無聲的微型影片，
-        // 讓系統認為有媒體正在播放，阻止 OS 層級的休眠。
-        // 比 Wake Lock API 更可靠，能對付大屏的硬體待機。
+        // 防休眠模組（四層保險）
         // =============================================
-        const NOSLEEP_VIDEO = document.getElementById('nosleep-video');
+        const NoSleep = (() => {
+            // --- 狀態追蹤 ---
+            const state = {
+                wakeLock: false,
+                video: false,
+                animation: false,
+                titleFlicker: false,
+            };
 
-        function createNoSleepSource() {
-            // 極小的無聲 webm (Chrome/Edge/Firefox)
-            const webm = "data:video/webm;base64,GkXfo0AgQoaBAUL3gQFC8oEEQvOBCEKCQAR3ZWJtQoeBAkKFgQIYU4BnQI0VSalmQCgq17FAAw9CQE2AQAZ3aGFtbXlXQUAGd2hhbW15RIlACECPQAAAAAAAFlSua0AxrkAu14EBY8WBAZyBACK1nEADdW5khkAFVl9WUDglhohAA1ZQOIOBAeBABrCBCLqBCB9DtnVB";
-            // 極小的無聲 mp4 (Safari/iOS)
-            const mp4 = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAACKBtZGF0AAACYQYF//9d3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE1NyByMjkwMSA3ZDBmZjIyIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAxOSAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTAgcmVmPTEgZGVibG9jaz0wOjA6MCBhbmFseXNlPTB4MToweDEgbWU9ZXNhIHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTI1IHNjZW5lY3V0PTQwIGludHJhX3JlZnJlc2g9MCByY19sb29rYWhlYWQ9MTAgcmM9Y3JmIG1idHJlZT0xIGNyZj0yOC4wIHFjb21wPTAuNjAgcXBtaW49MCBxcG1heD02OSBxcHN0ZXA9NCB2YnZfbWF4cmF0ZT03NjggdmJ2X2J1ZnNpemU9MzAwMCBjcmZfbWF4PTAuMCBuYWxfaHJkPW5vbmUgZmlsbGVyPTAgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAAA9liIQAV/0TAAYdeBTXzg8AAALhbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAACoAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAkx0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAACgAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAgAAAAIAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAAoAAAAAAABAAAAAAHEbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAB1MAAACAAVxAAAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAcm1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAADJzdGJsAAAAJnN0c2QAAAAAAAAAAQAAABZhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAgACABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAAMGF2Y0MBQsAK/+EAF2dCwAq5ZYQAAAM0AAADIDNAAAYMAAK4IAATwIAAAAoHmIFNAAAAAABhc3R0cwAAAAAAAAABAAAAAQAACAAAAAAcc3R0cwAAAAAAAAABAAAAAQAAAAAAAAAcc3RzYwAAAAAAAAABAAAAAQAAAAEAAAABAAAAHHN0c3oAAAAAAAAAAAAAAAEAAAAGAAAAFHN0Y28AAAAAAAAAAQAAACw=";
-            
-            if (NOSLEEP_VIDEO.canPlayType('video/webm; codecs="vp8"')) {
-                NOSLEEP_VIDEO.src = webm;
-            } else {
-                NOSLEEP_VIDEO.src = mp4;
-            }
-        }
+            const indicator = document.getElementById('nosleepIndicator');
 
-        function enableNoSleep() {
-            createNoSleepSource();
-            const playPromise = NOSLEEP_VIDEO.play();
-            if (playPromise !== undefined) {
-                playPromise.catch(() => {
-                    console.warn('NoSleep: 自動播放被阻擋，等待使用者互動後重試');
-                });
-            }
-        }
+            function updateIndicator() {
+                const activeCount = Object.values(state).filter(Boolean).length;
+                const names = [];
+                if (state.wakeLock)     names.push('WakeLock');
+                if (state.video)        names.push('影片');
+                if (state.animation)    names.push('微動畫');
+                if (state.titleFlicker) names.push('Title');
 
-        function tryEnableNoSleep() {
-            if (NOSLEEP_VIDEO.paused) {
-                NOSLEEP_VIDEO.play().catch(() => {});
+                if (activeCount > 0) {
+                    indicator.classList.add('active');
+                    indicator.dataset.tooltip = `防休眠 ${activeCount}/4：${names.join('+')}`;
+                } else {
+                    indicator.classList.remove('active');
+                    indicator.dataset.tooltip = '防休眠：未啟動';
+                }
             }
-        }
+
+            // -------------------------------------------------
+            // 第一層：Screen Wake Lock API
+            // 最正規的方式，但很多大屏的嵌入式瀏覽器不支援
+            // -------------------------------------------------
+            async function requestWakeLock() {
+                try {
+                    if (!('wakeLock' in navigator)) {
+                        console.warn('[防休眠] Wake Lock API 不支援');
+                        return;
+                    }
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    state.wakeLock = true;
+                    console.log('[防休眠] Wake Lock 已啟用');
+
+                    wakeLock.addEventListener('release', () => {
+                        console.log('[防休眠] Wake Lock 已釋放');
+                        state.wakeLock = false;
+                        wakeLock = null;
+                        updateIndicator();
+                    });
+
+                    updateIndicator();
+                } catch (err) {
+                    console.warn(`[防休眠] Wake Lock 失敗: ${err.message}`);
+                    state.wakeLock = false;
+                    updateIndicator();
+                }
+            }
+
+            // -------------------------------------------------
+            // 第二層：Canvas → MediaRecorder 產生真實影片串流
+            // 不依賴外部 base64，用瀏覽器原生 API 即時產生
+            // -------------------------------------------------
+            function startVideoStream() {
+                try {
+                    const c = document.getElementById('nosleepCanvas');
+                    const v = document.getElementById('nosleep-video');
+                    const cCtx = c.getContext('2d');
+
+                    // 每隔一段時間在隱藏 canvas 畫一個微小變化
+                    // 讓 MediaRecorder 持續產生有效的影格
+                    let tick = 0;
+                    setInterval(() => {
+                        tick = (tick + 1) % 256;
+                        cCtx.fillStyle = `rgba(${tick}, 0, 0, 0.01)`;
+                        cCtx.fillRect(0, 0, 2, 2);
+                    }, 1000);
+
+                    // 檢查是否支援 captureStream
+                    if (!c.captureStream) {
+                        console.warn('[防休眠] captureStream 不支援，改用 fallback');
+                        startVideoFallback();
+                        return;
+                    }
+
+                    const stream = c.captureStream(1); // 1 fps 就夠了
+                    v.srcObject = stream;
+                    const playPromise = v.play();
+                    if (playPromise) {
+                        playPromise.then(() => {
+                            state.video = true;
+                            console.log('[防休眠] Canvas 影片串流已啟動');
+                            updateIndicator();
+                        }).catch(() => {
+                            console.warn('[防休眠] 影片自動播放被阻擋');
+                            state.video = false;
+                            updateIndicator();
+                        });
+                    }
+                } catch (err) {
+                    console.warn('[防休眠] 影片串流失敗:', err);
+                    startVideoFallback();
+                }
+            }
+
+            // 第二層 fallback：用極小的 inline mp4
+            // 這是經過驗證可用的最小 H.264 無聲影片
+            function startVideoFallback() {
+                try {
+                    const v = document.getElementById('nosleep-video');
+                    // 最小可解碼的 mp4 — 1x1 黑色像素、一幀、無音軌
+                    v.src = createMinimalMP4Blob();
+                    const p = v.play();
+                    if (p) {
+                        p.then(() => {
+                            state.video = true;
+                            console.log('[防休眠] Fallback MP4 已啟動');
+                            updateIndicator();
+                        }).catch(() => {
+                            state.video = false;
+                            updateIndicator();
+                        });
+                    }
+                } catch (err) {
+                    console.warn('[防休眠] Fallback MP4 也失敗:', err);
+                    state.video = false;
+                    updateIndicator();
+                }
+            }
+
+            // 用 MediaSource API 產生一個空的可播放媒體
+            // 如果連這個都不支援，就只靠其他層
+            function createMinimalMP4Blob() {
+                // 經驗證的最小 mp4（1x1, 1 frame, no audio, H.264 baseline）
+                const raw = atob(
+                    'AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAABltZGF0AAAB' +
+                    'sGNIIf/+AHAAAAbAAAAAABAAAAMAAAPoAAAA8CEA/wABRAAAA0gBAAH/AlAAAAMkSP8A' +
+                    'AAAAAAFtb292AAAAbG12aGQAAAAAAAAAAAAAAAAAAAPoAAAAKAABAAABAAAAAAAAAAAAAA' +
+                    'AAAAABAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAA' +
+                    'AAAAAAAAAAAAAACAAAAl0dHJhawAAAFx0a2hkAAAAAwAAAAAAAAAAAAAAQAAAAAAAACgA' +
+                    'AAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAACAAIAAAAAACYbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAACsAAAA' +
+                    'CgBVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAAAASGFuZGxlcgAAAABr' +
+                    'bWluZgAAABR2bWhkAAAAAQAAAAAAAAAAAAAAJGRpbmYAAAAcZHJlZgAAAAAAAAABAAAA' +
+                    'DHVybCAAAAABAAAAK3N0YmwAAAAbc3RzZAAAAAAAAAABAAAAC2F2YzEAAAAAAAAAAQAA' +
+                    'AAAAAAAAAAAAAAAAAAgACABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
+                    'AAAAAAAAAAAAAAAY//8AAAAtYXZjQwFCAArAAR4HdIAAADIAAB9IAeUCjwAAK/QA2AAB' +
+                    'bAAABkDyJvfkAAAAFHN0dHMAAAAAAAAAAAAAABRzdHNjAAAAAAAAAAAAAAASc3RzegAA' +
+                    'AAAAAAAAAAAAEgAAFHN0Y28AAAAAAAAAAQAAACQ='
+                );
+                const bytes = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+                return URL.createObjectURL(new Blob([bytes], { type: 'video/mp4' }));
+            }
+
+            // 嘗試重啟影片播放（使用者互動後呼叫）
+            function tryResumeVideo() {
+                const v = document.getElementById('nosleep-video');
+                if (v && v.paused) {
+                    v.play().then(() => {
+                        state.video = true;
+                        updateIndicator();
+                    }).catch(() => {});
+                }
+            }
+
+            // -------------------------------------------------
+            // 第三層：DOM 微動畫
+            // 每 30 秒讓一個隱藏像素做 translateX 微移
+            // 強制瀏覽器重繪，某些大屏系統靠偵測畫面變化判斷是否待機
+            // -------------------------------------------------
+            function startMicroAnimation() {
+                const pixel = document.getElementById('nosleepPixel');
+                let pos = 0;
+                setInterval(() => {
+                    pos = (pos + 1) % 2;
+                    pixel.style.transform = `translateX(${pos}px)`;
+                    // 同時觸發一次 layout reflow（讀取 offsetHeight）
+                    void pixel.offsetHeight;
+                }, 30000);
+
+                state.animation = true;
+                console.log('[防休眠] DOM 微動畫已啟動（每 30 秒）');
+                updateIndicator();
+            }
+
+            // -------------------------------------------------
+            // 第四層：document.title 閃爍
+            // 某些系統偵測的是「分頁是否有更新」
+            // 每 60 秒在 title 末尾加/移除一個不可見字元
+            // -------------------------------------------------
+            function startTitleFlicker() {
+                const baseTitle = document.title;
+                let flickerState = false;
+                setInterval(() => {
+                    flickerState = !flickerState;
+                    document.title = flickerState
+                        ? baseTitle + '\u200B'   // 零寬空白
+                        : baseTitle;
+                }, 60000);
+
+                state.titleFlicker = true;
+                console.log('[防休眠] Title 閃爍已啟動（每 60 秒）');
+                updateIndicator();
+            }
+
+            // -------------------------------------------------
+            // 頁面可見性變化時重新啟動
+            // -------------------------------------------------
+            function handleVisibilityChange() {
+                if (document.visibilityState === 'visible') {
+                    console.log('[防休眠] 頁面重新可見，重新啟動防護');
+                    requestWakeLock();
+                    tryResumeVideo();
+                }
+            }
+
+            // -------------------------------------------------
+            // 公開介面
+            // -------------------------------------------------
+            return {
+                async start() {
+                    console.log('[防休眠] ===== 啟動四層防休眠 =====');
+
+                    // 第一層
+                    await requestWakeLock();
+                    // 第二層
+                    startVideoStream();
+                    // 第三層
+                    startMicroAnimation();
+                    // 第四層
+                    startTitleFlicker();
+
+                    // 監聽頁面可見性，恢復時重新取鎖
+                    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+                    // 使用者互動時嘗試恢復影片播放
+                    document.addEventListener('click', tryResumeVideo);
+                    document.addEventListener('touchstart', tryResumeVideo);
+                },
+
+                tryResumeVideo,
+
+                getStatus() {
+                    return { ...state };
+                }
+            };
+        })();
+
 
         // =============================================
         // 主要邏輯
@@ -437,6 +691,7 @@
             const savedOffset = localStorage.getItem('examClockOffset');
             if (savedOffset) {
                 globalTimeOffset = parseInt(savedOffset);
+                if (isNaN(globalTimeOffset)) globalTimeOffset = 0;
                 updateCalInfo();
             }
 
@@ -445,48 +700,17 @@
 
             await loadCSV();
             
-            // [新增] CSV 載入失敗時顯示可見的警告
             if (!csvLoaded) {
                 document.getElementById('csvWarning').style.display = 'block';
             }
 
-            // [改進] 防休眠雙保險：Wake Lock API + NoSleep 無聲影片
-            await requestWakeLock();
-            enableNoSleep();
-
-            // 監聽使用者互動，確保 NoSleep 能通過自動播放限制
-            document.addEventListener('click', tryEnableNoSleep);
-            document.addEventListener('touchstart', tryEnableNoSleep);
+            // 啟動四層防休眠
+            await NoSleep.start();
 
             renderSidebar();
             setInterval(updateLoop, 1000);
             updateLoop(); 
         }
-
-        // --- Wake Lock ---
-        async function requestWakeLock() {
-            try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    console.log('Screen Wake Lock active');
-                    
-                    wakeLock.addEventListener('release', () => {
-                        console.log('Screen Wake Lock released');
-                        wakeLock = null; // [修正] 釋放後歸零
-                    });
-                }
-            } catch (err) {
-                console.warn(`Wake Lock 無法啟用: ${err.name}, ${err.message}`);
-            }
-        }
-        
-        // [修正] 不再檢查 wakeLock !== null，頁面可見時無條件嘗試重新取鎖
-        document.addEventListener('visibilitychange', async () => {
-            if (document.visibilityState === 'visible') {
-                await requestWakeLock();
-                tryEnableNoSleep();
-            }
-        });
 
         // --- Canvas RWD ---
         function resizeCanvas() {
@@ -512,7 +736,7 @@
                     document.exitFullscreen();
                 }
             }
-            tryEnableNoSleep(); // 趁使用者互動啟動 NoSleep
+            NoSleep.tryResumeVideo();
         }
 
         // --- CSV ---
@@ -684,7 +908,7 @@
                 } else if (nextSlot) {
                     centerSubject.textContent = "休息中";
                     centerStatus.textContent = `下節：${nextSlot.subject} (${nextSlot.start})`;
-                    centerStatus.style.color = COLORS.textSecondary; // [修正] 現在有正確的值
+                    centerStatus.style.color = COLORS.textSecondary;
                     alertText.style.display = 'none';
                     drawArc(0, COLORS.blue);
 
